@@ -9,6 +9,10 @@ class TestPreserve(unittest.TestCase):
         key = preserve.cache_key("/test/path", "gzip")
         self.assertEqual(key, "test:response:gzip:/test/path")
 
+        preserve = LocalPreserve(cache_prefix=None)
+        key = preserve.cache_key("/test/path", "br")
+        self.assertEqual(key, "response:br:/test/path")
+
     def test_cache_value_generation_and_parsing(self):
         preserve = LocalPreserve()
         response = Response("Hello, World!", status=200, mimetype='text/plain')
