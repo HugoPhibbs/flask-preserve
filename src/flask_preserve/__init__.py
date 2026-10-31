@@ -19,11 +19,11 @@ class Preserve(ABC):
         self.cache_prefix = cache_prefix
 
     @abstractmethod
-    def get(self, key: str) -> bytes | str | None:
+    def get(self, key: str) -> bytes | None:
         pass
 
     @abstractmethod
-    def set(self, key: str, status_code: int, body, timeout: int = 0) -> None:
+    def set(self, key: str, response: Response, timeout: int = 0) -> None:
         pass
 
     def preserve_response(
@@ -67,8 +67,9 @@ class Preserve(ABC):
                 body = response.get_data()
                 if encoding != "identity":
                     body = ENCODERS[encoding](body)
+                    response.set_data(body)
 
-                self.set(key, status_code, body, timeout=timeout)
+                self.set(key, response, timeout=timeout)
                 mimetype = response.mimetype
 
                 return self.preserved_response_obj(
@@ -100,18 +101,7 @@ class Preserve(ABC):
         :param path: The request path.
         :return: A string representing the cache key.
         """
-        encoding_abrev = ""
-        if encoding == "identity":
-            encoding_abrev = "ID"
-        elif encoding == "gzip":
-            encoding_abrev = "GZ"
-        elif encoding == "zstd":
-            encoding_abrev = "ZS"
-        elif encoding == "br":
-            encoding_abrev = "BR"
-        else:
-            raise ValueError(f"Unsupported encoding: {encoding}")
-        return f"{self.cache_prefix}:response:{encoding_abrev}:{path}"
+        return f"{self.cache_prefix}:response:{encoding}:{path}"
 
     def cache_value(self, response: Response) -> bytes:
         """
@@ -120,7 +110,7 @@ class Preserve(ABC):
         :param response: The response to cache.
         :return: A bytes object representing the cache value.
         """
-        assert not response.is_sequence, "Cannot cache file responses"
+        assert response.is_sequence, "Cannot cache file responses"
         
         status_code = response.status_code
         mimetype = response.mimetype
@@ -129,19 +119,26 @@ class Preserve(ABC):
 
         return str(f"{status_code}:{mimetype}").encode() + b"\n" + body
 
-    def parse_cache_value(self, value) -> tuple[int, str, bytes]:
+    def parse_cache_value(self, value: bytes) -> tuple[int, str, bytes]:
         """
         Parses a cache value into its components: status code and body.
 
         :param value: The cache value to parse.
         :return: A tuple containing the status code and body.
         """
-        if len(value) < 3:
+        if value is None or len(value) < 3:
             raise ValueError("Invalid cache value format")
 
         meta, body = value.split(b"\n", 1)
+        if b":" not in meta:
+            raise ValueError("Invalid cache value format")
+
         status_code, mimetype = meta.decode().split(":", 1)
-        status_code = int(status_code)
+
+        try:
+            status_code = int(status_code)
+        except ValueError:
+            raise ValueError("Invalid status code in cache value")
 
         return status_code, mimetype, body
 
@@ -159,10 +156,10 @@ class RedisPreserve(Preserve):
             # Ignore cache errors
             return None
 
-    def set(self, key, status_code, body, timeout=0):
+    def set(self, key, response, timeout=0):
         if timeout <= 0:
             timeout = None
-        value = self.cache_value(status_code, body)
+        value = self.cache_value(response)
         try:
             self.redis_client.set(key, value, ex=timeout)
         except redis.RedisError:
@@ -178,6 +175,6 @@ class LocalPreserve(Preserve):
     def get(self, key):
         return self.cache.get(key)
 
-    def set(self, key, status_code, body, timeout=0):
-        value = self.cache_value(status_code, body)
+    def set(self, key, response, timeout=0):
+        value = self.cache_value(response)
         self.cache[key] = value
