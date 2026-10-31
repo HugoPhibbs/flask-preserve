@@ -54,8 +54,11 @@ class Preserve(ABC):
 
                 if cached_value is not None:
                     status_code, mimetype, body = self.parse_cache_value(cached_value)
-                    return self.preserved_response_obj(
-                        body, status_code, encoding, hit=True, mimetype=mimetype, timeout=timeout
+                    response = Response(
+                        body, status=status_code, mimetype=mimetype
+                    )
+                    return self.add_cache_headers(
+                        response, encoding, hit=True, timeout=timeout
                     )
 
                 # Cache miss
@@ -72,21 +75,18 @@ class Preserve(ABC):
                 self.set(key, response, timeout=timeout)
                 mimetype = response.mimetype
 
-                return self.preserved_response_obj(
-                    body, status_code, encoding, hit=False, mimetype=mimetype, timeout=timeout
+                return self.add_cache_headers(
+                    response, encoding, hit=False, timeout=timeout
                 )
 
             return wrapper
 
         return decorator
-
-    def preserved_response_obj(self, body, status, encoding, hit, mimetype, timeout):
-        response = Response(
-            body, status=status, mimetype=mimetype
-        )
+    
+    def add_cache_headers(self, response, encoding, hit, timeout):
         if encoding != "identity":
             response.headers["Content-Encoding"] = encoding
-        response.headers["Vary"] = "Accept-Encoding"
+        response.vary.add("Accept-Encoding")
         response.headers["App-Cache"] = "HIT" if hit else "MISS"
         response.headers["Cache-Control"] = (
             f"public, max-age={timeout}, s-maxage={timeout}"
@@ -101,7 +101,10 @@ class Preserve(ABC):
         :param path: The request path.
         :return: A string representing the cache key.
         """
-        return f"{self.cache_prefix}:response:{encoding}:{path}"
+        prefix = ""
+        if self.cache_prefix is not None:
+            prefix = f"{self.cache_prefix}:"
+        return f"{prefix}response:{encoding}:{path}"
 
     def cache_value(self, response: Response) -> bytes:
         """
