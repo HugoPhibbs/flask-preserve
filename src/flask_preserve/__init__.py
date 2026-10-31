@@ -64,7 +64,7 @@ class Preserve(ABC):
                 # Cache miss
                 response = make_response(view(*args, **kwargs))
                 status_code = response.status_code
-                if not response.is_sequence or status_code >= 400:  # Don't cache files or client errors
+                if not response.is_sequence or status_code >= 300:  # Don't cache files, 300s or client errors
                     return response
 
                 body = response.get_data()
@@ -73,7 +73,6 @@ class Preserve(ABC):
                     response.set_data(body)
 
                 self.set(key, response, timeout=timeout)
-                mimetype = response.mimetype
 
                 return self.add_cache_headers(
                     response, encoding, hit=False, timeout=timeout
@@ -88,9 +87,6 @@ class Preserve(ABC):
             response.headers["Content-Encoding"] = encoding
         response.vary.add("Accept-Encoding")
         response.headers["App-Cache"] = "HIT" if hit else "MISS"
-        response.headers["Cache-Control"] = (
-            f"public, max-age={timeout}, s-maxage={timeout}"
-        )
         return response
 
     def cache_key(self, path, encoding) -> str:
