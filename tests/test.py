@@ -47,7 +47,7 @@ class TestLocalPreserve(unittest.TestCase):
             self.assertEqual(response1.data, b"Hello, World!")
             self.assertEqual(response1.mimetype, 'text/plain')
             self.assertEqual(response1.headers['App-Cache'], 'MISS')
-            self.assertIsNone(response1.headers["Content-Encoding"])
+            self.assertIsNone(response1.headers.get("Content-Encoding"))
 
             # Second request should be cached
             response2 = client.get('/test')
@@ -55,7 +55,7 @@ class TestLocalPreserve(unittest.TestCase):
             self.assertEqual(response2.data, b"Hello, World!")
             self.assertEqual(response2.mimetype, 'text/plain')
             self.assertEqual(response2.headers['App-Cache'], 'HIT')
-            self.assertIsNone(response2.headers["Content-Encoding"])
+            self.assertIsNone(response2.headers.get("Content-Encoding"))
 
     def test_simple_compression(self):
         app = Flask(__name__)
